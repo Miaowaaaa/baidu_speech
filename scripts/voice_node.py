@@ -32,6 +32,7 @@ class recoder():
         words = self.reg()
         print type(words)
         self.voice_pub.publish(words)
+        self.savewav("test")
 
     def reg(self):
 
@@ -363,7 +364,7 @@ class recoder():
 
     def savewav(self, filename):
         rospy.loginfo('存储音频')
-        file_path = '/home/turtlebot/xu_slam/src/simple_voice/src'
+        file_path = '/home/Miaow'
         WAVE_FILE = '%s/%s.wav' % (file_path, filename)
         wf = wave.open(WAVE_FILE, 'wb')
         wf.setnchannels(1)
