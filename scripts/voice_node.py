@@ -10,6 +10,7 @@ import base64
 import os
 import sys
 import requests
+import thread
 import wave
 import rospy
 import numpy as np
@@ -24,18 +25,43 @@ class recoder():
         self.voice_service = rospy.Service("voice_service", Empty,
                                            self.voice_service)
         self.voice_pub = rospy.Publisher('reg_result', String, queue_size=1)
+        self.is_release = True
         self.define()
         rospy.spin()
 
     def voice_service(self, req):
-        self.recode()
-        words = self.reg()
-        print type(words)
-        self.voice_pub.publish(words)
-        self.savewav("test")
+        """
+        service callback
+        creata a thread to process time-cost step
+        """
+        if self.is_release:
+            self.is_release = False
+            thread.start_new_thread(self.voice_reg,("reg",1,))
+        else:
+            self.is_release = True
+        return []
+
+    def voice_reg(self,thread_name,delay):
+        """
+        the thread for voice recognization
+        """
+        if self.recode():
+            words = self.reg()
+            print type(words)
+            self.voice_pub.publish(words)
+            self.savewav("test")
+
+            # reset record state
+            self.is_release = True
+        else:
+            # reset record state
+            self.is_release = True
+            rospy.logwarn("To few words can't be recognized!")
 
     def reg(self):
-
+        """
+        the real recognition process
+        """
         #get token
         requestData = {
             "grant_type": self.Grant_type,
@@ -85,24 +111,24 @@ class recoder():
                           headers=HTTP_HEADER)
 
         rospy.loginfo('response')
-        self.Print_Response(r.headers)
+        # self.Print_Response(r.headers)
         result = json.loads(r.text)
-        self.Print_Response(result)
-        rospy.loginfo('result: %s \n' % result['err_msg'])  #,type(result)
-        rospy.loginfo('response\n')
+        # self.Print_Response(result)
+        rospy.loginfo('result: %s ' % result['err_msg'])  #,type(result)
+        rospy.loginfo('response')
 
         if result[u'err_msg'] == 'success.':
             word = result['result'][0].encode('utf-8')
             if word != '':
                 if word[len(word) - 3:len(word)] == '，':
-                    rospy.loginfo('cog. result:　%s \n' % word[0:len(word) - 3])
+                    rospy.loginfo('cog. result:　%s ' % word[0:len(word) - 3])
                     return word[0:len(word) - 3]
                 else:
                     rospy.loginfo(word)
                     return word
             else:
-                rospy.loginfo("音频文件不存在或格式错误\n")
-                return '音频文件不存在或格式错误'
+                rospy.loginfo("audio file not exist or format error")
+                return 'audio file not exist or format error'
         else:
             rospy.loginfo(result['err_no'])
             return self.error_reason[result['err_no']]
@@ -233,7 +259,7 @@ class recoder():
         )  # default 8 声音记录的最小长度：SAVE_LENGTH * NUM_SAMPLES 个取样
         #print 'self.SAVE_LENGTH',self.SAVE_LENGTH,type(self.SAVE_LENGTH)
 
-        self.TIME_OUT = rospy.get_param('~REG_TIME_OUT')  # default 60 录音时间，单位s
+        self.TIME_OUT = rospy.get_param('~REG_TIME_OUT')  # default 60s
         #print 'self.TIME_OUT',self.TIME_OUT,type(self.TIME_OUT)
 
         self.NO_WORDS = rospy.get_param('~REG_NO_WORDS')  # default 6
@@ -290,33 +316,29 @@ class recoder():
                          frames_per_buffer=self.NUM_SAMPLES)
         save_count = 0
         save_buffer = []
-        time_out = self.TIME_OUT
-        NO_WORDS = self.NO_WORDS
-
-        while True and NO_WORDS:
-            time_out -= 1
-            print 'time_out in', time_out  # 读入NUM_SAMPLES个取样
-            string_audio_data = stream.read(self.NUM_SAMPLES)  # 将读入的数据转换为数组
+        word_count = 0              #record the word number
+        rospy.loginfo("begin to record audio data")
+        while not self.is_release:
+            string_audio_data = stream.read(self.NUM_SAMPLES)  
+            # convert to an array
             audio_data = np.fromstring(string_audio_data, dtype=np.short)
 
-            # 查看是否没有语音输入
-            NO_WORDS -= 1
-            if np.max(audio_data) > self.UPPER_LEVEL:
-                NO_WORDS = self.NO_WORDS
-            print 'self.NO_WORDS ', NO_WORDS
-            print 'np.max(audio_data) ', np.max(audio_data)
+            # check if there audio input
+            rospy.loginfo("np.max(audio_data)  %d", np.max(audio_data))
 
-            # 计算大于LOWER_LEVEL的取样的个数
+            # calculate the number of samples whose value higher than a threshold
             large_sample_count = np.sum(audio_data > self.LOWER_LEVEL)
+            word_count = word_count + large_sample_count
 
-            # 如果个数大于COUNT_NUM，则至少保存SAVE_LENGTH个块
+            # if the number is bigger than COUNT_NUM, save SAE_LENGTH blocks at least
             if large_sample_count > self.COUNT_NUM:
                 save_count = self.SAVE_LENGTH
+
             else:
                 save_count -= 1
             #print 'save_count',save_count
 
-            # 将要保存的数据存放到save_buffer中
+            # save datas in save_buffer
             if save_count < 0:
                 save_count = 0
             elif save_count > 0:
@@ -324,21 +346,24 @@ class recoder():
             else:
                 pass
 
-            # 将save_buffer中的数据写入WAV文件，WAV文件的文件名是保存的时刻
-            if len(save_buffer) > 0 and NO_WORDS == 0:
-                self.Voice_String = save_buffer
-                save_buffer = []
-                rospy.loginfo("Recode a piece of voice successfully!")
-                #return self.Voice_String
+        # write save_buffer into a .wav file
+        if len(save_buffer) > 0:
+            self.Voice_String = save_buffer
+            save_buffer = []
+            rospy.loginfo("Recode a piece of voice successfully!")
+            #return self.Voice_String
+        else:
+            pass
+        #rospy.loginfo( '\n\n')
+        rospy.loginfo("Word count: %d",word_count)
 
-            elif len(save_buffer) > 0 and time_out == 0:
-                self.Voice_String = save_buffer
-                save_buffer = []
-                rospy.loginfo("Recode a piece of voice successfully!")
-                #return self.Voice_String
-            else:
-                pass
-            #rospy.loginfo( '\n\n')
+        # warn few words
+        if word_count < self.NO_WORDS:
+            return False
+        else:
+            return True
+
+
 
     def conventor(self, Data_to_String):
         Voice_data = str()
@@ -363,7 +388,7 @@ class recoder():
         ###########################################################
 
     def savewav(self, filename):
-        rospy.loginfo('存储音频')
+        rospy.loginfo('save audio')
         file_path = '/home/Miaow'
         WAVE_FILE = '%s/%s.wav' % (file_path, filename)
         wf = wave.open(WAVE_FILE, 'wb')
@@ -372,7 +397,7 @@ class recoder():
         wf.setframerate(self.SAMPLING_RATE)
         wf.writeframes("".join(self.Voice_String))
         wf.close()
-        rospy.loginfo('音频数据已存')
+        rospy.loginfo('audio dato is saved')
 
 
 if __name__ == "__main__":

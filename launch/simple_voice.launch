@@ -4,7 +4,7 @@
   <arg name="REG_UPPER_LEVEL"                    default="5000" />
   <arg name="REG_LOWER_LEVEL"                    default="500" />
   <arg name="REG_COUNT_NUM"                      default="20" />
-  <arg name="REG_SAVE_LENGTH"                    default="8" />
+  <arg name="REG_SAVE_LENGTH"                    default="20" />
   <arg name="REG_TIME_OUT"                       default="60" />
   <arg name="REG_NO_WORDS"                       default="6" />
   <arg name="REG_Api_Key"                        default="pmUzrWcsA3Ce7RB5rSqsvQt2" />
