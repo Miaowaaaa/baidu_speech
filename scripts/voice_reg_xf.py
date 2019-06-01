@@ -107,9 +107,9 @@ class recoder():
         }
         self.URL = "http://api.xfyun.cn/v1/service/v1/iat"
         # 应用APPID（必须为webapi类型应用，并开通语音听写服务，参考帖子如何创建一个webapi应用：http://bbs.xfyun.cn/forum.php?mod=viewthread&tid=36481）
-        self.APPID = "5cef711c"
+        self.APPID = "5cf247f2"
         # 接口密钥（webapi类型应用开通听写服务后，控制台--我的应用---语音听写---相应服务的apikey）
-        self.API_KEY = "35be5779affe4fe4ad6a13adc1ea30f8"
+        self.API_KEY = "1e8aaff568b36cd60f26ecd27655fb33"
         self.aue = "raw"
         self.engineType = "sms8k"
         self.nchannel = 1
