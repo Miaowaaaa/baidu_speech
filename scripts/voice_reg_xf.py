@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Copyright (c) 2016 Xu Zhihao (Howe).  All rights reserved.
-This program is free software; you can redistribute it and/or modify
-This programm is tested on kuboki base turtlebot."""
 
 from pyaudio import PyAudio, paInt16
 import json
@@ -18,22 +15,34 @@ import array
 import chunk
 import time
 import hashlib
-from std_srvs.srv import Empty
+from std_srvs.srv import Empty,SetBool,SetBoolRequest
 from std_msgs.msg import String
+from geometry_msgs.msg import PoseWithCovarianceStamped,Pose
 
 
 class recoder():
     def __init__(self):
-        self.voice_service = rospy.Service("voice_service", Empty,
-                                           self.voice_service)
+        
+        self.voice_service = rospy.Service("voice_service", Empty,self.voice_service)
         self.voice_pub = rospy.Publisher('reg_result', String, queue_size=1)
+        self.command_pub = rospy.Publisher("command_reg",String,queue_size=1)
+        self.voice_call = rospy.Subscriber('/is_reach',String,self.voice_callback)
+        # judge the record button state
         self.is_release = True
+        self.is_reach   = False
+        # set parameters
         self.define()
+        thread.start_new_thread(self.voice_reg,("reg",1,))
         rospy.spin()
-
+    def voice_callback(self,data):
+        """
+        """
+        self.is_reach = True    
+    
     def voice_service(self, req):
         """
         service callback
+        req:    an empty request msg
         creata a thread to process time-cost step
         """
         if self.is_release:
@@ -46,20 +55,31 @@ class recoder():
     def voice_reg(self,thread_name,delay):
         """
         the thread for voice recognization
+        thread_name:    the name of thread
+        delay      :    the time of delay
         """
-        if self.recode():
-            self.savewav("test")
-            words = self.reg()
-            self.voice_pub.publish(words)
-            # reset record state
-            self.is_release = True
-        else:
-            # reset record state
-            self.is_release = True
-            rospy.logwarn("To few words can't be recognized!")
+        while not rospy.is_shutdown():
+            if self.is_reach:
+                if self.recode(): 
+                    self.is_reach = False
+                    self.savewav(self.fileName)
+                    words = self.reg()
+                    print words
+                    # if self.is_reach:
+                    # self.is_reach = False
+                    self.voice_pub.publish(words)
+                    # self.command_pub.publish(words)
+                    # reset record state
+                    # self.is_release = True
+                else:
+                    # reset record state
+                    # self.is_release = True
+                    rospy.logwarn("To few words can't be recognized!")
     
     def getHeader(self,aue,engineType):
-        
+        """
+        create a http request header
+        """
         curTime = str(int(time.time()))
         param = "{\"aue\":\"" + aue + "\"" + ",\"engine_type\":\"" + engineType + "\"}"
         paramBase64 = str(base64.b64encode(param.encode('utf-8')))
@@ -77,18 +97,18 @@ class recoder():
         return header
     
     def getBody(self,filepath):
+        """
+        read the record audio file and encode with base64
+        """
         binfile = open(filepath, 'rb')
         data = {'audio': base64.b64encode(binfile.read())}
-        # print data
-        # print 'data:{}'.format(type(data['audio']))
-        # print("type(data['audio']):{}".format(type(data['audio'])))
         return data    
     
     def reg(self):
         """
         the real recognition process
         """
-        audioFilePath = r"/home/Miaow/test.wav"
+        audioFilePath = self.audioFilePath + "/" + self.fileName + ".wav"
         r = requests.post(self.URL, 
                             headers = self.getHeader(self.aue, self.engineType),
                             data = self.getBody(audioFilePath))
@@ -96,6 +116,9 @@ class recoder():
         return result['data']
     
     def define(self):
+        """
+        define parameters
+        """
         self.error_reason = {
             3300: '输入参数不正确',
             3301: '识别错误',
@@ -106,168 +129,30 @@ class recoder():
             3314: '语音时间太短'
         }
         self.URL = "http://api.xfyun.cn/v1/service/v1/iat"
-        # 应用APPID（必须为webapi类型应用，并开通语音听写服务，参考帖子如何创建一个webapi应用：http://bbs.xfyun.cn/forum.php?mod=viewthread&tid=36481）
+        
         self.APPID = "5cf247f2"
-        # 接口密钥（webapi类型应用开通听写服务后，控制台--我的应用---语音听写---相应服务的apikey）
+        
         self.API_KEY = "1e8aaff568b36cd60f26ecd27655fb33"
         self.aue = "raw"
         self.engineType = "sms8k"
         self.nchannel = 1
-        if rospy.has_param('~REG_NUM_SAMPLES'):
-            pass
-        else:
-            rospy.set_param('~REG_NUM_SAMPLES', 2000)
-
-        if rospy.has_param('~REG_SAMPLING_RATE'):
-            pass
-        else:
-            rospy.set_param('~REG_SAMPLING_RATE', 8000)
-
-        if rospy.has_param('~REG_UPPER_LEVEL'):
-            pass
-        else:
-            rospy.set_param('~REG_UPPER_LEVEL', 5000)
-
-        if rospy.has_param('~REG_LOWER_LEVEL'):
-            pass
-        else:
-            rospy.set_param('~REG_LOWER_LEVEL', 500)
-
-        if rospy.has_param('~REG_COUNT_NUM'):
-            pass
-        else:
-            rospy.set_param('~REG_COUNT_NUM', 20)
-
-        if rospy.has_param('~REG_SAVE_LENGTH'):
-            pass
-        else:
-            rospy.set_param('~REG_SAVE_LENGTH', 8)
-
-        if rospy.has_param('~REG_TIME_OUT'):
-            pass
-        else:
-            rospy.set_param('~REG_TIME_OUT', 60)
-
-        if rospy.has_param('~REG_NO_WORDS'):
-            pass
-        else:
-            rospy.set_param('~REG_NO_WORDS', 6)
-
-        if rospy.has_param('~REG_Api_Key'):
-            pass
-        else:
-            rospy.set_param('~REG_Api_Key', "pmUzrWcsA3Ce7RB5rSqsvQt2")
-
-        if rospy.has_param('~REG_Secrect_Key'):
-            pass
-        else:
-            rospy.set_param('~REG_Secrect_Key',
-                            "d39ec848d016a8474c7c25e308b310c3")
-
-        if rospy.has_param('~REG_Grant_type'):
-            pass
-        else:
-            rospy.set_param('~REG_Grant_type', "client_credentials")
-
-        if rospy.has_param('~REG_Token_url'):
-            pass
-        else:
-            rospy.set_param('~REG_Token_url',
-                            "https://openapi.baidu.com/oauth/2.0/token")
-
-        if rospy.has_param('~REG_Reg_url'):
-            pass
-        else:
-            rospy.set_param('~REG_Reg_url', "http://vop.baidu.com/server_api")
-
-        if rospy.has_param('~REG_USER_ID'):
-            pass
-        else:
-            rospy.set_param('~REG_USER_ID', "8168466")
-
-        if rospy.has_param('~REG_FORMAT'):
-            pass
-        else:
-            rospy.set_param('~REG_FORMAT', "wav")
-
-        if rospy.has_param('~REG_LAN'):
-            pass
-        else:
-            rospy.set_param('~REG_LAN', "zh")
-
-        if rospy.has_param('~REG_nchannel'):
-            pass
-        else:
-            rospy.set_param('~REG_nchannel', 1)
-
-        self.NUM_SAMPLES = rospy.get_param(
-            '~REG_NUM_SAMPLES')  # default 2000 pyaudio内置缓冲大小
-        #print 'self.NUM_SAMPLES',self.NUM_SAMPLES,type(self.NUM_SAMPLES)
-
-        self.SAMPLING_RATE = rospy.get_param(
-            '~REG_SAMPLING_RATE')  # default 8000 取样频率
-        #print 'self.SAMPLING_RATE',self.SAMPLING_RATE,type(self.SAMPLING_RATE)
-
-        self.UPPER_LEVEL = rospy.get_param(
-            '~REG_UPPER_LEVEL')  # default 5000 声音保存的阈值
-        #print 'self.UPPER_LEVEL',self.UPPER_LEVEL,type(self.UPPER_LEVEL)
-
-        self.LOWER_LEVEL = rospy.get_param(
-            '~REG_LOWER_LEVEL')  # default 500 声音保存的阈值
-        #print 'self.LOWER_LEVEL',self.LOWER_LEVEL,type(self.LOWER_LEVEL)
-
-        self.COUNT_NUM = rospy.get_param(
-            '~REG_COUNT_NUM'
-        )  # default 20 NUM_SAMPLES个取样之内出现COUNT_NUM个大于LOWER_LEVEL的取样则记录声音
-        #print 'self.COUNT_NUM',self.COUNT_NUM,type(self.COUNT_NUM)
-
-        self.SAVE_LENGTH = rospy.get_param(
-            '~REG_SAVE_LENGTH'
-        )  # default 8 声音记录的最小长度：SAVE_LENGTH * NUM_SAMPLES 个取样
-        #print 'self.SAVE_LENGTH',self.SAVE_LENGTH,type(self.SAVE_LENGTH)
-
-        self.TIME_OUT = rospy.get_param('~REG_TIME_OUT')  # default 60s
-        #print 'self.TIME_OUT',self.TIME_OUT,type(self.TIME_OUT)
-
-        self.NO_WORDS = rospy.get_param('~REG_NO_WORDS')  # default 6
-        #print 'self.NO_WORDS',self.NO_WORDS,type(self.NO_WORDS)
-
-        self.Api_Key = rospy.get_param(
-            '~REG_Api_Key')  # default "pmUzrWcsA3Ce7RB5rSqsvQt2"
-        #print 'self.Api_Key',self.Api_Key,type(self.Api_Key)
-
-        self.Secrect_Key = rospy.get_param(
-            '~REG_Secrect_Key')  # default "d39ec848d016a8474c7c25e308b310c3"
-        #print 'self.Secrect_Key',self.Secrect_Key,type(self.Secrect_Key)
-
-        self.Grant_type = rospy.get_param(
-            '~REG_Grant_type')  # default "client_credentials"
-        #print 'self.Grant_type',self.Grant_type,type(self.Grant_type)
-
-        self.Token_url = rospy.get_param(
-            '~REG_Token_url'
-        )  # default 'https://openapi.baidu.com/oauth/2.0/token'
-        #print 'self.Token_url',self.Token_url,type(self.Token_url)
-
-        self.Reg_url = rospy.get_param(
-            '~REG_Reg_url')  # default 'http://vop.baidu.com/server_api'
-        #print 'self.Reg_url',self.Reg_url,type(self.Reg_url)
-
-        self.USER_ID = rospy.get_param('~REG_USER_ID')  # default '8168466'
-        #print 'self.USER_ID',self.USER_ID,type(self.USER_ID)
-
-        self.FORMAT = rospy.get_param('~REG_FORMAT')  # default 'wav'
-        #print 'self.FORMAT',self.FORMAT,type(self.FORMAT)
-
-        self.LAN = rospy.get_param('~REG_LAN')  # default 'zh'
-        #print 'self.LAN',self.LAN,type(self.LAN)
-
-        self.nchannel = rospy.get_param('~REG_nchannel')  # default 1
-        #print 'self.nchannel',self.nchannel,type(self.nchannel)
-
+        
+        self.NUM_SAMPLES = rospy.get_param('~REG_NUM_SAMPLES',2000)  # default 2000 pyaudio内置缓冲大小
+        self.SAMPLING_RATE = rospy.get_param('~REG_SAMPLING_RATE',8000)  # default 8000 取样频率
+        self.COUNT_NUM = rospy.get_param('~REG_COUNT_NUM',20) # default 20 NUM_SAMPLES个取样之内出现COUNT_NUM个大于LOWER_LEVEL的取样则记录声音
+        self.SAVE_LENGTH = rospy.get_param('~REG_SAVE_LENGTH',8)  # default 8 声音记录的最小长度：SAVE_LENGTH * NUM_SAMPLES 个取样
+        self.NO_WORDS = rospy.get_param('~REG_NO_WORDS',6)  # default 6
+        self.APPID = rospy.get_param('~REG_APP_ID',"5cef711c")
+        self.API_KEY = rospy.get_param('~REG_API_KEY',"35be5779affe4fe4ad6a13adc1ea30f8")
+        self.nchannel = rospy.get_param('~REG_nchannel',1)  # default 1
+        self.audioFilePath = rospy.get_param('REG_AUDIO_SAVE_PATH',"/home/Miaow")   
+        self.fileName = rospy.get_param('REG_AUDIN_SAVE_NAME','test')
         self.Voice_String = []
 
     def recode(self):
+        """
+        recode audio date
+        """
         pa = PyAudio()
         stream = pa.open(format=paInt16,
                          channels=self.nchannel,
@@ -278,7 +163,10 @@ class recoder():
         save_buffer = []
         word_count = 0              #record the word number
         rospy.loginfo("begin to record audio data")
-        while not self.is_release:
+        time_out = 25
+        self.Voice_String = []
+        no_words_count = 20
+        while True and time_out > 0:
             string_audio_data = stream.read(self.NUM_SAMPLES)  
             # convert to an array
             audio_data = np.fromstring(string_audio_data, dtype=np.short)
@@ -287,15 +175,16 @@ class recoder():
             rospy.loginfo("np.max(audio_data)  %d", np.max(audio_data))
 
             # calculate the number of samples whose value higher than a threshold
-            large_sample_count = np.sum(audio_data > self.LOWER_LEVEL)
+            large_sample_count = np.sum(audio_data > 1900)
             word_count = word_count + large_sample_count
 
             # if the number is bigger than COUNT_NUM, save SAE_LENGTH blocks at least
             if large_sample_count > self.COUNT_NUM:
                 save_count = self.SAVE_LENGTH
-
+                no_words_count = no_words_count + 1
             else:
                 save_count -= 1
+                no_words_count = no_words_count - 1
             #print 'save_count',save_count
 
             # save datas in save_buffer
@@ -305,6 +194,10 @@ class recoder():
                 save_buffer.append(string_audio_data)
             else:
                 pass
+
+            if no_words_count < 1:
+                break
+            time_out -= 1
 
         # write save_buffer into a .wav file
         if len(save_buffer) > 0:
@@ -318,12 +211,16 @@ class recoder():
         rospy.loginfo("Word count: %d",word_count)
 
         # warn few words
-        if word_count < self.NO_WORDS:
+        if word_count < 1:
             return False
         else:
             return True
+        pa.close()
 
     def savewav(self, filename):
+        """
+        save as a audio file
+        """
         rospy.loginfo('save audio')
         file_path = '/home/Miaow'
         WAVE_FILE = '%s/%s.wav' % (file_path, filename)
@@ -337,7 +234,6 @@ class recoder():
 
 
 if __name__ == "__main__":
-    rospy.init_node('simple_voice')
+    rospy.init_node('voice_command')
     rospy.loginfo("initialization system")
     recoder()
-    rospy.loginfo("process done and quit")
